@@ -1,13 +1,17 @@
 import os
 import sqlite3
 import hashlib
-from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message
-from aiogram.filters import CommandStart
-from aiogram.enums import ContentType
 import asyncio
 
+from aiogram import Bot, Dispatcher, F
+from aiogram.types import Message
+from aiogram.filters import CommandStart, Command
+from aiogram.enums import ContentType
+
 TOKEN = os.getenv("TOKEN")
+
+if not TOKEN:
+    raise RuntimeError("TOKEN not found in environment variables")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -69,14 +73,22 @@ async def handle_photo(message: Message):
     conn.commit()
 
 
-# --- УДАЛЕНИЕ СООБЩЕНИЙ ---
-@dp.message_deleted()
-async def on_message_deleted(message: Message):
+# --- FORGET ---
+@dp.message(Command("forget"))
+async def forget_photo(message: Message):
+    if not message.reply_to_message or not message.reply_to_message.photo:
+        await message.reply("Ответь командой /forget на сообщение с фото 📸")
+        return
+
+    replied = message.reply_to_message
+
     cursor.execute(
         "DELETE FROM hashes WHERE chat_id=? AND message_id=?",
-        (message.chat.id, message.message_id)
+        (replied.chat.id, replied.message_id)
     )
     conn.commit()
+
+    await message.reply("Окей, я забыл это фото 🧠❌")
 
 
 async def main():
