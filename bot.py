@@ -34,7 +34,6 @@ CREATE TABLE IF NOT EXISTS hashes (
 conn.commit()
 
 
-# ===== HASH FUNCTION =====
 def get_hash(path: str) -> str:
     with open(path, "rb") as f:
         return hashlib.md5(f.read()).hexdigest()
@@ -79,7 +78,7 @@ async def start(message: Message):
 
 
 # ===== PHOTO (PRIVATE / GROUPS) =====
-@dp.message(F.content_type == ContentType.PHOTO)
+@dp.message(F.photo)
 async def handle_message_photo(message: Message):
     await process_photo(message)
 
@@ -90,4 +89,31 @@ async def handle_channel_photo(message: Message):
     await process_photo(message)
 
 
-# ===== FORGET
+# ===== FORGET =====
+@dp.message(Command("forget"))
+async def forget_photo(message: Message):
+    if not message.reply_to_message or not message.reply_to_message.photo:
+        await message.reply("Ответь /forget на сообщение с фото 📸")
+        return
+
+    replied = message.reply_to_message
+
+    cursor.execute(
+        "DELETE FROM hashes WHERE chat_id=? AND message_id=?",
+        (replied.chat.id, replied.message_id)
+    )
+    conn.commit()
+
+    await message.reply("Я забыл это фото 🧠❌")
+
+
+# ===== MAIN =====
+async def main():
+    await dp.start_polling(
+        bot,
+        allowed_updates=["message", "channel_post"]
+    )
+
+
+if name == "__main__":
+    asyncio.run(main())
