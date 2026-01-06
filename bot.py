@@ -56,11 +56,11 @@ async def process_photo(message: Message):
     )
     exists = cursor.fetchone()
 
-if exists:
-    try:
-        await message.delete()
-    except:
-        pass
+    if exists:
+        try:
+            await message.delete()
+        except:
+            pass
 
     if os.path.exists(path):
         os.remove(path)
