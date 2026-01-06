@@ -1,91 +1,87 @@
-import asyncio
-import hashlib
 import os
 import sqlite3
-
+import hashlib
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message
 from aiogram.filters import CommandStart
+from aiogram.enums import ContentType
+import asyncio
 
-TOKEN = "8236629542:AAGKRISV7s1GcaQjuPfuhi42rAEnwFXoPa8"
+TOKEN = os.getenv("TOKEN")
 
-DB_NAME = "hashes.db"
-MEDIA_DIR = "media"
+bot = Bot(token=TOKEN)
+dp = Dispatcher()
 
-os.makedirs(MEDIA_DIR, exist_ok=True)
+os.makedirs("media", exist_ok=True)
 
-# --- База данных ---
-conn = sqlite3.connect(DB_NAME)
+# --- БАЗА ---
+conn = sqlite3.connect("hashes.db")
 cursor = conn.cursor()
+
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS files (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    hash TEXT UNIQUE
+CREATE TABLE IF NOT EXISTS hashes (
+    hash TEXT,
+    chat_id INTEGER,
+    message_id INTEGER
 )
 """)
 conn.commit()
 
-# --- Бот ---
-bot = Bot(token=TOKEN)
-dp = Dispatcher()
 
-
-def get_file_hash(path: str) -> str:
-    with open(path, "rb") as f:
+def get_hash(file_path: str) -> str:
+    with open(file_path, "rb") as f:
         return hashlib.md5(f.read()).hexdigest()
 
 
-async def process_media(message: Message):
-    file = None
-
-    if message.photo:
-        file = message.photo[-1]
-    elif message.video:
-        file = message.video
-    else:
-        return
-
-    file_info = await bot.get_file(file.file_id)
-    file_path = os.path.join(MEDIA_DIR, file.file_id)
-
-    await bot.download_file(file_info.file_path, file_path)
-
-    file_hash = get_file_hash(file_path)
-
-    cursor.execute("SELECT 1 FROM files WHERE hash=?", (file_hash,))
-    exists = cursor.fetchone()
-
-    if exists:
-        try:
-            await message.delete()
-        except:
-            pass
-    else:
-        cursor.execute("INSERT INTO files (hash) VALUES (?)", (file_hash,))
-        conn.commit()
-
-
-# --- /start ТОЛЬКО в личке ---
-@dp.message(CommandStart(), F.chat.type == "private")
-async def start_private(message: Message):
+# --- START ---
+@dp.message(CommandStart())
+async def start(message: Message):
     await message.answer("Я слежу за дубликатами 👀")
 
 
-# --- ЛИЧНЫЕ ЧАТЫ ---
-@dp.message(F.chat.type == "private")
-async def private_media(message: Message):
-    await process_media(message)
+# --- ФОТО ---
+@dp.message(F.content_type == ContentType.PHOTO)
+async def handle_photo(message: Message):
+    photo = message.photo[-1]
+    file = await bot.download(photo.file_id)
+
+    path = f"media/{photo.file_unique_id}.jpg"
+    with open(path, "wb") as f:
+        f.write(file.read())
+
+    img_hash = get_hash(path)
+
+    cursor.execute(
+        "SELECT 1 FROM hashes WHERE hash=? AND chat_id=?",
+        (img_hash, message.chat.id)
+    )
+    exists = cursor.fetchone()
+
+    if exists:
+        await message.delete()
+        os.remove(path)
+        return
+
+    cursor.execute(
+        "INSERT INTO hashes (hash, chat_id, message_id) VALUES (?, ?, ?)",
+        (img_hash, message.chat.id, message.message_id)
+    )
+    conn.commit()
 
 
-# --- КАНАЛ ---
-@dp.channel_post()
-async def channel_media(message: Message):
-    await process_media(message)
+# --- УДАЛЕНИЕ СООБЩЕНИЙ ---
+@dp.message_deleted()
+async def on_message_deleted(message: Message):
+    cursor.execute(
+        "DELETE FROM hashes WHERE chat_id=? AND message_id=?",
+        (message.chat.id, message.message_id)
+    )
+    conn.commit()
 
 
 async def main():
     await dp.start_polling(bot)
 
 
-if __name__ == "__main__":
+if name == "__main__":
     asyncio.run(main())
