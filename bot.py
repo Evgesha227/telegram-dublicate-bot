@@ -44,8 +44,8 @@ async def start(message: Message):
 
 
 # --- ФОТО ---
-@dp.message(F.content_type == ContentType.PHOTO)
-async def handle_photo(message: Message):
+@dp.channel_post(F.photo)
+async def handle_channel_photo(message: Message):
     photo = message.photo[-1]
     file = await bot.download(photo.file_id)
 
