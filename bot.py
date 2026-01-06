@@ -8,17 +8,19 @@ from aiogram.types import Message
 from aiogram.filters import CommandStart, Command
 from aiogram.enums import ContentType
 
+# ===== TOKEN =====
 TOKEN = os.getenv("TOKEN")
-
 if not TOKEN:
     raise RuntimeError("TOKEN not found in environment variables")
 
+# ===== BOT =====
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+# ===== FILES =====
 os.makedirs("media", exist_ok=True)
 
-# --- БАЗА ---
+# ===== DATABASE =====
 conn = sqlite3.connect("hashes.db")
 cursor = conn.cursor()
 
@@ -32,20 +34,14 @@ CREATE TABLE IF NOT EXISTS hashes (
 conn.commit()
 
 
-def get_hash(file_path: str) -> str:
-    with open(file_path, "rb") as f:
+# ===== HASH FUNCTION =====
+def get_hash(path: str) -> str:
+    with open(path, "rb") as f:
         return hashlib.md5(f.read()).hexdigest()
 
 
-# --- START ---
-@dp.message(CommandStart())
-async def start(message: Message):
-    await message.answer("Я слежу за дубликатами 👀")
-
-
-# --- ФОТО ---
-@dp.channel_post(F.photo)
-async def handle_channel_photo(message: Message):
+# ===== COMMON PHOTO LOGIC =====
+async def process_photo(message: Message):
     photo = message.photo[-1]
     file = await bot.download(photo.file_id)
 
@@ -62,7 +58,10 @@ async def handle_channel_photo(message: Message):
     exists = cursor.fetchone()
 
     if exists:
-        await message.delete()
+        try:
+            await message.delete()
+        except:
+            pass
         os.remove(path)
         return
 
@@ -73,27 +72,22 @@ async def handle_channel_photo(message: Message):
     conn.commit()
 
 
-# --- FORGET ---
-@dp.message(Command("forget"))
-async def forget_photo(message: Message):
-    if not message.reply_to_message or not message.reply_to_message.photo:
-        await message.reply("Ответь командой /forget на сообщение с фото 📸")
-        return
-
-    replied = message.reply_to_message
-
-    cursor.execute(
-        "DELETE FROM hashes WHERE chat_id=? AND message_id=?",
-        (replied.chat.id, replied.message_id)
-    )
-    conn.commit()
-
-    await message.reply("Окей, я забыл это фото 🧠❌")
+# ===== START =====
+@dp.message(CommandStart())
+async def start(message: Message):
+    await message.answer("Я слежу за дубликатами 👀")
 
 
-async def main():
-    await dp.start_polling(bot)
+# ===== PHOTO (PRIVATE / GROUPS) =====
+@dp.message(F.content_type == ContentType.PHOTO)
+async def handle_message_photo(message: Message):
+    await process_photo(message)
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+# ===== PHOTO (CHANNEL) =====
+@dp.channel_post(F.photo)
+async def handle_channel_photo(message: Message):
+    await process_photo(message)
+
+
+# ===== FORGET
