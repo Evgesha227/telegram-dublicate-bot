@@ -57,12 +57,15 @@ async def process_photo(message: Message):
     exists = cursor.fetchone()
 
     if exists:
-        try:
-            await message.delete()
-        except:
-            pass
+    try:
+        await message.delete()
+    except:
+        pass
+
+    if os.path.exists(path):
         os.remove(path)
-        return
+
+    return
 
     cursor.execute(
         "INSERT INTO hashes (hash, chat_id, message_id) VALUES (?, ?, ?)",
