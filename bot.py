@@ -56,7 +56,7 @@ async def process_photo(message: Message):
     )
     exists = cursor.fetchone()
 
-    if exists:
+if exists:
     try:
         await message.delete()
     except:
